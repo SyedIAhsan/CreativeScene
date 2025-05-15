@@ -32,3 +32,6 @@ A real‑time WebGL demo that combines procedural terrain, dynamic weather, day�
 | dat.GUI sliders   | Toggle rain, helpers, lightning; adjust wind, water, sun speed… |
 
 
+
+![Screenshot](brave_OWjHlPOywu.jpg)
+
