@@ -1,4 +1,4 @@
-# Wind and Rain‑Swept Forest Scene (Three.js)
+# Wind and Rain‑Swept Volcanic Island Scene (Three.js)
 
 A real‑time WebGL demo that combines procedural terrain, dynamic weather, day–night lighting, water shaders, and physics‑driven lava eruptions—all running in the browser with **Three.js** and **Cannon‑es**.
 
