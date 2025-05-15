@@ -22,6 +22,7 @@
 */
 
 // Scene setup
+
 const scene = new THREE.Scene();
 const textureLoader = new THREE.TextureLoader();
 const loader = new THREE.FBXLoader();
@@ -62,6 +63,21 @@ const windSettings = {
 
 let terrain = null;
 
+//Physics set up
+
+const world = new CANNON.World();
+world.gravity.set(0, -10, 0);
+
+const planeShape = new CANNON.Plane();
+const planeBody = new CANNON.Body({ mass: 0 });
+
+planeBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+
+planeBody.addShape(planeShape);
+
+planeBody.material = new CANNON.Material();
+planeBody.material.restitution = 0.6;
+world.addBody(planeBody);
 /*
 
 
@@ -145,7 +161,7 @@ const cubemap = cubeTextureLoader.load([
   "https://raw.githubusercontent.com/amaraauguste/amaraauguste.github.io/refs/heads/master/courses/CISC3620/textures/Daylight%20Box_Pieces/Daylight%20Box_NegZ.bmp",
 ]);
 
-// Set cubemap as background and environment
+
 scene.background = cubemap;
 scene.environment = cubemap;
 */
@@ -222,7 +238,7 @@ function buildTerrain() {
   terrain.receiveShadow = true;
   scene.add(terrain);
 
-  //---------------------------------------- CPU-displace & colour
+  //------ CPU-displace & colour
   displaceAndColor(g); // helper
   loadAndScatterTrees();
 }
@@ -244,7 +260,7 @@ function displaceAndColor(geometry) {
   const highC = new THREE.Color(TERRA.colors.high);
 
   for (let i = 0; i < posAttr.count; i++) {
-    // --- displacement -----------------------------------------------------
+    // --- displacement -----
     const u = uvAttr.getX(i);
     const v = uvAttr.getY(i);
     const xPix = Math.floor(u * (img.width - 1));
@@ -255,7 +271,7 @@ function displaceAndColor(geometry) {
     const zWorld = grey * SCALE + BIAS;
     posAttr.setZ(i, zWorld);
 
-    // --- colouring --------------------------------------------------------
+    // --- colouring -----
     let h = THREE.MathUtils.clamp((zWorld - BIAS) / SCALE, 0, 1);
     let r, g, b;
     if (h < TERRA.thresholds.mid) {
@@ -278,7 +294,7 @@ function getGreenVertexPositions(geometry, targetColorHex) {
   const colAttr = geometry.attributes.color;
 
   const target = new THREE.Color(targetColorHex);
-  const threshold = 0.03; // strict color match
+  const threshold = 0.03;
   const positions = [];
 
   for (let i = 0; i < posAttr.count; i++) {
@@ -294,7 +310,7 @@ function getGreenVertexPositions(geometry, targetColorHex) {
       const x = posAttr.getX(i);
       const y = posAttr.getY(i);
       const z = posAttr.getZ(i);
-      positions.push(new THREE.Vector3(x, y, z)); // raw vertex-space pos
+      positions.push(new THREE.Vector3(x, y, z));
     }
   }
 
@@ -315,8 +331,8 @@ scene.add(terrain);
 //   new THREE.MeshStandardMaterial({ color: 0x222222, side: THREE.DoubleSide })
 // );
 
-// shadowPlane.rotation.x = -Math.PI / 2; // Make it horizontal
-// shadowPlane.position.y = 100; // Place it below the scene
+// shadowPlane.rotation.x = -Math.PI / 2;
+// shadowPlane.position.y = 100;
 // shadowPlane.receiveShadow = true;
 // shadowPlane.castShadow = true;
 
@@ -326,7 +342,7 @@ scene.add(terrain);
 // const testMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
 // const testCube = new THREE.Mesh(testGeometry, testMaterial);
 
-// testCube.position.set(0, 150, 0); // raise it off the ground
+// testCube.position.set(0, 150, 0);
 // testCube.castShadow = true;
 
 // // scene.add(testCube);
@@ -370,14 +386,18 @@ loader.load("3dCloud.fbx", function (object) {
   object.traverse(function (child) {
     if (child.isMesh) {
       child.castShadow = true;
+      const mat = child.material;
+
+      mat.transparent = true;
+      mat.opacity = 0.5;
     }
   });
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 13; i++) {
     let cloud = object.clone();
     cloud.position.set(
       Math.random() * 800 - 250,
-      200,
+      200 + (Math.random() * 20 - 20),
       Math.random() * 800 - 250
     );
     const scale = 1 + Math.random() * 0.8;
@@ -442,13 +462,13 @@ loader.load("3dCloud.fbx", function (object) {
 let rain,
   rainDrop,
   rainCount = 60000;
-const positions = new Float32Array(rainCount * 3); // x, y, z for each drop
+const positions = new Float32Array(rainCount * 3);
 const velocities = [];
 
 for (let i = 0; i < rainCount; i++) {
-  positions[i * 3 + 0] = Math.random() * 800 - 400; // x
-  positions[i * 3 + 1] = Math.random() * 500 - 300; // y
-  positions[i * 3 + 2] = Math.random() * 800 - 400; // z
+  positions[i * 3 + 0] = Math.random() * 800 - 400;
+  positions[i * 3 + 1] = Math.random() * 500 - 300;
+  positions[i * 3 + 2] = Math.random() * 800 - 400;
 
   velocities.push({
     x: wind.x + (Math.random() - 0.5) * 0.1,
@@ -597,15 +617,49 @@ window.addEventListener("click", (event) => {
   raycaster.setFromCamera(mouse, camera);
   const intersects = raycaster.intersectObject(lavaCircle);
 
-  if (intersects.length > 0) {
+  if (intersects.length > 0 && intersects[0].object === lavaCircle) {
     console.log("Lava clicked");
-
+    ejectLava(intersects[0].point);
     lavaLight.intensity = 50;
     setTimeout(() => {
       lavaLight.intensity = 5;
     }, 2000);
   }
 });
+
+const lavaSpheres = [];
+
+function ejectLava(position) {
+  const sphereGeo = new THREE.SphereGeometry(3, 16, 16);
+  const sphereMat = new THREE.MeshStandardMaterial({
+    color: 0xff4500,
+    emissive: 0xff2200,
+  });
+
+  const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+  sphereMesh.castShadow = true;
+  sphereMesh.receiveShadow = true;
+  scene.add(sphereMesh);
+
+  const sphereShape = new CANNON.Sphere(1.5);
+  const sphereBody = new CANNON.Body({
+    mass: 3,
+    shape: sphereShape,
+    position: new CANNON.Vec3(position.x, position.y + 5, position.z),
+  });
+
+  const upwardForce = 10 + Math.random() * 20;
+  const sideForce = 27;
+
+  sphereBody.velocity.set(
+    (Math.random() - 0.5) * sideForce,
+    upwardForce,
+    (Math.random() - 0.5) * sideForce
+  );
+
+  world.addBody(sphereBody);
+  lavaSpheres.push({ mesh: sphereMesh, body: sphereBody });
+}
 
 // Lighting
 
@@ -664,7 +718,7 @@ setInterval(() => {
     lightning.position.set(
       Math.random() * (lightningArea.maxX - lightningArea.minX) +
         lightningArea.minX,
-      300 + Math.random() * 50, // random Y above terrain
+      300 + Math.random() * 30,
       Math.random() * (lightningArea.maxZ - lightningArea.minZ) +
         lightningArea.minZ
     );
@@ -800,7 +854,9 @@ fCol
 // Animation loop
 const clock = new THREE.Clock();
 function animate() {
-  const delta = clock.getDelta(); // for future animation use
+  const delta = clock.getDelta();
+  world.step(1 / 60, delta);
+
   controls.update();
   renderer.render(scene, camera);
   water.material.uniforms["time"].value += waterProperties.waterDelta;
@@ -814,6 +870,11 @@ function animate() {
   requestAnimationFrame(animate);
 
   fireMat.update(delta / 2);
+
+  lavaSpheres.forEach(({ mesh, body }) => {
+    mesh.position.copy(body.position);
+    mesh.quaternion.copy(body.quaternion);
+  });
 
   const pos = rain.geometry.attributes.position.array;
 
@@ -846,8 +907,8 @@ function animate() {
     const tilt =
       Math.sin(phase) * 0.15 * windSettings.speed * tree.userData.swayAmplitude;
 
-    tree.rotation.x = tilt * windSettings.z; // forward/back
-    tree.rotation.z = tilt * windSettings.x; // left/right
+    tree.rotation.x = tilt * windSettings.z;
+    tree.rotation.z = tilt * windSettings.x;
   });
 
   const sunX = Math.cos(elapsedTime) * sunOrbitRadius;
